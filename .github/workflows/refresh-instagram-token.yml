@@ -2,7 +2,7 @@ name: Refresh Instagram Token
 
 on:
   schedule:
-    - cron: "0 5 1 * *"
+    - cron: "0 5 * * 1"
   workflow_dispatch:
 
 jobs:
@@ -11,30 +11,31 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Refresh long-lived token
+      - name: Refresh long-lived token from Supabase secret source
         id: refresh
         env:
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
-          META_APP_ID: ${{ secrets.META_APP_ID }}
-          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          TOKEN_ROTATION_SECRET: ${{ secrets.TOKEN_ROTATION_SECRET }}
         run: |
           set -euo pipefail
 
-          if [ -z "${INSTAGRAM_ACCESS_TOKEN:-}" ]; then
-            echo "Missing INSTAGRAM_ACCESS_TOKEN secret" >&2
+          if [ -z "${VITE_SUPABASE_URL:-}" ] || [ -z "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+            echo "Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY" >&2
             exit 1
           fi
 
-          if [ -z "${META_APP_ID:-}" ] || [ -z "${META_APP_SECRET:-}" ]; then
-            echo "Missing META_APP_ID or META_APP_SECRET secret" >&2
+          if [ -z "${TOKEN_ROTATION_SECRET:-}" ]; then
+            echo "Missing TOKEN_ROTATION_SECRET secret" >&2
             exit 1
           fi
 
-          RESPONSE=$(curl -sS -G "https://graph.facebook.com/v18.0/oauth/access_token" \
-            --data-urlencode "grant_type=fb_exchange_token" \
-            --data-urlencode "client_id=${META_APP_ID}" \
-            --data-urlencode "client_secret=${META_APP_SECRET}" \
-            --data-urlencode "fb_exchange_token=${INSTAGRAM_ACCESS_TOKEN}")
+          RESPONSE=$(curl -sS -X POST "${VITE_SUPABASE_URL}/functions/v1/refresh-instagram-token" \
+            -H "Content-Type: application/json" \
+            -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
+            -H "x-rotation-secret: ${TOKEN_ROTATION_SECRET}" \
+            -d '{}')
 
           NEW_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
           EXPIRES_IN=$(echo "$RESPONSE" | jq -r '.expires_in // empty')
@@ -48,6 +49,8 @@ jobs:
             echo "new_token=$NEW_TOKEN"
             echo "expires_in=$EXPIRES_IN"
           } >> "$GITHUB_OUTPUT"
+
+          echo "::add-mask::$NEW_TOKEN"
 
       - name: Update Supabase secret
         env:
@@ -73,4 +76,4 @@ jobs:
         env:
           EXPIRES_IN: ${{ steps.refresh.outputs.expires_in }}
         run: |
-          echo "Instagram token refreshed. expires_in=${EXPIRES_IN}s" >> "$GITHUB_STEP_SUMMARY"
+          echo "Instagram token refreshed from Supabase secret source. expires_in=${EXPIRES_IN}s" >> "$GITHUB_STEP_SUMMARY"

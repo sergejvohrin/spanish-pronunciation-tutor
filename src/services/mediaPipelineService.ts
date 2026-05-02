@@ -1,4 +1,5 @@
 import axios from "axios";
+import { Translation } from "@/types/translation";
 
 interface SaveResponse {
   imageUrl: string;
@@ -8,6 +9,13 @@ interface PublishResponse {
   imageUrl: string;
   postId: string;
   storyId: string;
+}
+
+interface ReadinessResponse {
+  ready: boolean;
+  igUserId: string;
+  pagesCount: number;
+  message: string;
 }
 
 function getSupabaseConfig() {
@@ -31,7 +39,8 @@ function getHeaders(publishableKey: string) {
 
 export async function saveGeneratedImageToImgBB(
   imageDataUrl: string,
-  imgbbApiKey?: string
+  translation: Translation,
+  caption: string
 ): Promise<SaveResponse> {
   const { supabaseUrl, publishableKey } = getSupabaseConfig();
 
@@ -40,7 +49,8 @@ export async function saveGeneratedImageToImgBB(
     {
       action: "save",
       imageDataUrl,
-      imgbbApiKey
+      translation,
+      caption
     },
     {
       headers: getHeaders(publishableKey)
@@ -57,8 +67,7 @@ export async function saveGeneratedImageToImgBB(
 export async function publishGeneratedImageToInstagram(
   imageDataUrl: string,
   caption: string,
-  instagramAccessToken?: string,
-  imgbbApiKey?: string
+  translation: Translation
 ): Promise<PublishResponse> {
   const { supabaseUrl, publishableKey } = getSupabaseConfig();
 
@@ -68,8 +77,27 @@ export async function publishGeneratedImageToInstagram(
       action: "publish_story_post",
       imageDataUrl,
       caption,
-      instagramAccessToken,
-      imgbbApiKey
+      translation
+    },
+    {
+      headers: getHeaders(publishableKey)
+    }
+  );
+
+  if ("error" in response.data) {
+    throw new Error(response.data.error);
+  }
+
+  return response.data;
+}
+
+export async function checkInstagramPublishingReadiness(): Promise<ReadinessResponse> {
+  const { supabaseUrl, publishableKey } = getSupabaseConfig();
+
+  const response = await axios.post<ReadinessResponse | { error: string }>(
+    `${supabaseUrl}/functions/v1/media-pipeline`,
+    {
+      action: "readiness_check"
     },
     {
       headers: getHeaders(publishableKey)

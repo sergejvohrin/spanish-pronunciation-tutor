@@ -4,11 +4,13 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { generateAiSpainBackgroundImage } from "@/services/huggingFaceImageService";
 import { generateAiTranslation } from "@/services/huggingFaceService";
-import { publishGeneratedImageToInstagram, saveGeneratedImageToImgBB } from "@/services/mediaPipelineService";
+import {
+  checkInstagramPublishingReadiness,
+  publishGeneratedImageToInstagram,
+  saveGeneratedImageToImgBB
+} from "@/services/mediaPipelineService";
 import { getRandomTranslation } from "@/services/translationService";
 import { Translation } from "@/types/translation";
 import { generateTranslationPostImage } from "@/utils/canvasUtils";
@@ -25,16 +27,16 @@ function buildCaption(translation: Translation): string {
 }
 
 export function IndexPage() {
-  const [instagramToken, setInstagramToken] = useState("");
-  const [imgBbApiKey, setImgBbApiKey] = useState("");
   const [translation, setTranslation] = useState<Translation>(() => getRandomTranslation());
   const [previewImage, setPreviewImage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingAiWord, setIsGeneratingAiWord] = useState(false);
   const [isGeneratingAndSaving, setIsGeneratingAndSaving] = useState(false);
+  const [isCheckingInstagram, setIsCheckingInstagram] = useState(false);
   const [isPostingStoryAndPost, setIsPostingStoryAndPost] = useState(false);
 
-  const isBusy = isGenerating || isGeneratingAiWord || isGeneratingAndSaving || isPostingStoryAndPost;
+  const isBusy =
+    isGenerating || isGeneratingAiWord || isGeneratingAndSaving || isCheckingInstagram || isPostingStoryAndPost;
 
   const sections = useMemo(
     () => [
@@ -111,7 +113,7 @@ export function IndexPage() {
     try {
       const image = await buildGeneratedImage(translation);
       setPreviewImage(image);
-      const { imageUrl } = await saveGeneratedImageToImgBB(image, imgBbApiKey.trim() || undefined);
+      const { imageUrl } = await saveGeneratedImageToImgBB(image, translation, buildCaption(translation));
       toast.success("Generated image saved to ImgBB.", {
         action: {
           label: "Open",
@@ -126,6 +128,19 @@ export function IndexPage() {
     }
   };
 
+  const handleCheckInstagramSetup = async () => {
+    setIsCheckingInstagram(true);
+    try {
+      const result = await checkInstagramPublishingReadiness();
+      toast.success(`${result.message} IG user ID: ${result.igUserId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Instagram readiness check failed.";
+      toast.error(message);
+    } finally {
+      setIsCheckingInstagram(false);
+    }
+  };
+
   const handlePostAsStoryAndPost = async () => {
     setIsPostingStoryAndPost(true);
     try {
@@ -134,12 +149,7 @@ export function IndexPage() {
         setPreviewImage(image);
       }
 
-      const { imageUrl } = await publishGeneratedImageToInstagram(
-        image,
-        buildCaption(translation),
-        instagramToken.trim() || undefined,
-        imgBbApiKey.trim() || undefined
-      );
+      const { imageUrl } = await publishGeneratedImageToInstagram(image, buildCaption(translation), translation);
       toast.success("Image posted to Instagram Story and Feed Post.");
       toast.success("Uploaded image URL ready.", {
         action: {
@@ -161,31 +171,14 @@ export function IndexPage() {
         <CardHeader>
           <CardTitle>Multilingual Instagram Post Generator</CardTitle>
           <CardDescription>
-            Generate random English, Spanish, and Catalan translation posts and publish directly to Instagram.
+            Generate Spanish-themed translation posts. Secrets stay in Supabase Edge Functions, not in the browser.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="instagram-token">Instagram Access Token</Label>
-              <Input
-                id="instagram-token"
-                type="password"
-                placeholder="Optional override (uses backend secret by default)"
-                value={instagramToken}
-                onChange={(event) => setInstagramToken(event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="imgbb-api-key">ImgBB API Key</Label>
-              <Input
-                id="imgbb-api-key"
-                type="password"
-                placeholder="Optional override (uses backend secret by default)"
-                value={imgBbApiKey}
-                onChange={(event) => setImgBbApiKey(event.target.value)}
-              />
+            <div className="rounded-md border bg-slate-50 p-4 text-sm text-slate-700">
+              Backend-managed secrets are active for Hugging Face, ImgBB, and Instagram publishing. Use the readiness
+              check before the first post to confirm the Meta account linkage is correct.
             </div>
 
             <div className="grid gap-3">
@@ -220,6 +213,16 @@ export function IndexPage() {
                   </>
                 ) : (
                   "Generate + Save to ImgBB"
+                )}
+              </Button>
+              <Button onClick={handleCheckInstagramSetup} disabled={isBusy} variant="secondary">
+                {isCheckingInstagram ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Checking...
+                  </>
+                ) : (
+                  "Check Instagram Setup"
                 )}
               </Button>
               <Button onClick={handlePostAsStoryAndPost} disabled={isBusy}>

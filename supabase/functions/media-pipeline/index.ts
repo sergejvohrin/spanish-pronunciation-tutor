@@ -7,6 +7,8 @@ interface SaveRequest {
   action: "save";
   imageDataUrl: string;
   imgbbApiKey?: string;
+  caption?: string;
+  translation?: TranslationPayload;
 }
 
 interface PublishRequest {
@@ -15,9 +17,21 @@ interface PublishRequest {
   caption: string;
   imgbbApiKey?: string;
   instagramAccessToken?: string;
+  translation?: TranslationPayload;
 }
 
-type RequestBody = SaveRequest | PublishRequest;
+interface ReadinessRequest {
+  action: "readiness_check";
+  instagramAccessToken?: string;
+}
+
+interface TranslationPayload {
+  english: { word: string; phrase: string };
+  spanish: { word: string; phrase: string };
+  catalan: { word: string; phrase: string };
+}
+
+type RequestBody = SaveRequest | PublishRequest | ReadinessRequest;
 
 class PipelineError extends Error {
   status: number;
@@ -40,6 +54,62 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function stripDataUrlPrefix(base64Image: string): string {
   return base64Image.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+}
+
+function getSupabaseRestConfig(): { url: string; key: string } | null {
+  const url = (Deno.env.get("SUPABASE_URL") ?? "").trim();
+  const key = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "").trim();
+
+  if (!url || !key) {
+    return null;
+  }
+
+  return { url, key };
+}
+
+async function logPostEvent(params: {
+  translation?: TranslationPayload;
+  caption?: string;
+  imageUrl?: string;
+  instagramMediaId?: string;
+  status: string;
+  errorMessage?: string;
+}): Promise<void> {
+  if (!params.translation) {
+    return;
+  }
+
+  const config = getSupabaseRestConfig();
+  if (!config) {
+    return;
+  }
+
+  const payload = {
+    en_word: params.translation.english.word,
+    es_word: params.translation.spanish.word,
+    ca_word: params.translation.catalan.word,
+    caption: params.caption ?? "",
+    image_url: params.imageUrl ?? null,
+    instagram_media_id: params.instagramMediaId ?? null,
+    status: params.status,
+    error_message: params.errorMessage ?? null
+  };
+
+  const response = await fetch(`${config.url}/rest/v1/post_logs`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      Prefer: "return=minimal"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    console.error(`post_logs insert failed: ${response.status} ${body}`);
+  }
 }
 
 async function uploadToImgBB(base64Image: string, apiKey: string): Promise<string> {
@@ -126,10 +196,10 @@ async function publishInstagramContainerForUser(
   return data.id;
 }
 
-async function resolveInstagramBusinessAccountId(token: string): Promise<string> {
+async function inspectInstagramPublishingTarget(token: string): Promise<{ igUserId: string; pagesCount: number }> {
   const configuredId = (Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ?? "").trim();
   if (configuredId) {
-    return configuredId;
+    return { igUserId: configuredId, pagesCount: 0 };
   }
 
   const pagesResponse = await fetch(
@@ -144,7 +214,8 @@ async function resolveInstagramBusinessAccountId(token: string): Promise<string>
     throw new PipelineError(pagesData.error?.message ?? "Failed to load Facebook pages.", 400);
   }
 
-  for (const page of pagesData.data ?? []) {
+  const pages = pagesData.data ?? [];
+  for (const page of pages) {
     if (!page.id) {
       continue;
     }
@@ -160,7 +231,7 @@ async function resolveInstagramBusinessAccountId(token: string): Promise<string>
 
     const igId = pagePayload.instagram_business_account?.id;
     if (igId) {
-      return igId;
+      return { igUserId: igId, pagesCount: pages.length };
     }
   }
 
@@ -182,6 +253,23 @@ Deno.serve(async (request) => {
 
   try {
     const body = (await request.json()) as RequestBody;
+    const fallbackInstagramToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? "";
+    const instagramToken =
+      "instagramAccessToken" in body ? (body.instagramAccessToken ?? fallbackInstagramToken).trim() : fallbackInstagramToken;
+
+    if (body.action === "readiness_check") {
+      if (!instagramToken) {
+        return jsonResponse({ error: "Missing INSTAGRAM_ACCESS_TOKEN secret." }, 400);
+      }
+
+      const target = await inspectInstagramPublishingTarget(instagramToken);
+      return jsonResponse({
+        ready: true,
+        igUserId: target.igUserId,
+        pagesCount: target.pagesCount,
+        message: "Instagram publishing is correctly configured."
+      });
+    }
 
     if (!body.imageDataUrl?.startsWith("data:image/")) {
       return jsonResponse({ error: "Invalid image payload." }, 400);
@@ -196,29 +284,55 @@ Deno.serve(async (request) => {
     const imageUrl = await uploadToImgBB(body.imageDataUrl, imgbbApiKey);
 
     if (body.action === "save") {
+      await logPostEvent({
+        translation: body.translation,
+        caption: body.caption,
+        imageUrl,
+        status: "saved_to_imgbb"
+      });
       return jsonResponse({ imageUrl });
     }
 
-    const fallbackInstagramToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? "";
-    const instagramToken = (body.instagramAccessToken ?? fallbackInstagramToken).trim();
     if (!instagramToken) {
       return jsonResponse({ error: "Missing INSTAGRAM_ACCESS_TOKEN secret (or runtime token)." }, 400);
     }
 
     const caption = body.caption ?? "";
-    const igUserId = await resolveInstagramBusinessAccountId(instagramToken);
 
-    const postCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, caption, "IMAGE");
-    const storyCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, "", "STORIES");
+    try {
+      const target = await inspectInstagramPublishingTarget(instagramToken);
+      const igUserId = target.igUserId;
 
-    const postId = await publishInstagramContainerForUser(igUserId, instagramToken, postCreationId);
-    const storyId = await publishInstagramContainerForUser(igUserId, instagramToken, storyCreationId);
+      const postCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, caption, "IMAGE");
+      const storyCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, "", "STORIES");
 
-    return jsonResponse({
-      imageUrl,
-      postId,
-      storyId
-    });
+      const postId = await publishInstagramContainerForUser(igUserId, instagramToken, postCreationId);
+      const storyId = await publishInstagramContainerForUser(igUserId, instagramToken, storyCreationId);
+
+      await logPostEvent({
+        translation: body.translation,
+        caption,
+        imageUrl,
+        instagramMediaId: `post:${postId};story:${storyId}`,
+        status: "publish_succeeded"
+      });
+
+      return jsonResponse({
+        imageUrl,
+        postId,
+        storyId
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Instagram publish failed.";
+      await logPostEvent({
+        translation: body.translation,
+        caption,
+        imageUrl,
+        status: "publish_failed",
+        errorMessage: message
+      });
+      throw error;
+    }
   } catch (error) {
     const maybeStatus =
       typeof error === "object" && error !== null && "status" in error
