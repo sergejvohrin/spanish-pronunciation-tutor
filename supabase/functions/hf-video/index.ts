@@ -35,8 +35,14 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 async function getModelProviderMapping(model: string, token: string): Promise<ProviderMapping> {
+  // Hugging Face model IDs are path-like (org/model). Encode each segment but keep the slash.
+  const encodedModelPath = model
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
   const response = await fetch(
-    `https://huggingface.co/api/models/${encodeURIComponent(model)}?expand[]=inferenceProviderMapping`,
+    `https://huggingface.co/api/models/${encodedModelPath}?expand[]=inferenceProviderMapping`,
     {
       headers: {
         Authorization: `Bearer ${token}`
