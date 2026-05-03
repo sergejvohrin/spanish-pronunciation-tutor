@@ -1,0 +1,61 @@
+name: Daily Auto Publish
+
+on:
+  schedule:
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run without posting to Instagram"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+jobs:
+  auto_publish:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          [ -n "${VITE_SUPABASE_URL:-}" ] || { echo "Missing VITE_SUPABASE_URL" >&2; exit 1; }
+          [ -n "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ] || { echo "Missing VITE_SUPABASE_PUBLISHABLE_KEY" >&2; exit 1; }
+
+      - name: Auto publish next word
+        id: publish
+        run: |
+          set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ]; then
+            node scripts/auto_publish_next_word.mjs --dry-run | tee publish-result.json
+          else
+            node scripts/auto_publish_next_word.mjs | tee publish-result.json
+          fi
+          echo "result=$(cat publish-result.json | jq -c .)" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Daily Auto Publish"
+            echo ""
+            echo '```json'
+            cat publish-result.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
