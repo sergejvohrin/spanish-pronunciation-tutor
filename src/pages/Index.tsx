@@ -5,11 +5,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { generateAiSpainBackgroundImage } from "@/services/huggingFaceImageService";
-import { getAdjacentWord, getNextUnpublishedWord, getWordByPosition } from "@/services/languageWordsService";
+import { getAdjacentWord, getNextUnpublishedWord } from "@/services/languageWordsService";
 import { publishGeneratedImageToInstagram } from "@/services/mediaPipelineService";
 import { LanguageWordRecord, toTranslation } from "@/types/languageWord";
 import { Translation } from "@/types/translation";
-import { generateTranslationPostImage } from "@/utils/canvasUtils";
+import { generateTranslationPostImage, generateTranslationStoryImage } from "@/utils/canvasUtils";
 
 const FALLBACK_BACKGROUND_IMAGE = "https://images.pexels.com/photos/457882/pexels-photo-457882.jpeg";
 
@@ -60,6 +60,8 @@ function formatPublishedTo(publishedTo: string): string {
 export function IndexPage() {
   const [currentWord, setCurrentWord] = useState<LanguageWordRecord | null>(null);
   const [previewImage, setPreviewImage] = useState("");
+  const [storyImage, setStoryImage] = useState("");
+  const [postImage, setPostImage] = useState("");
   const [isLoadingWord, setIsLoadingWord] = useState(true);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isPostingStory, setIsPostingStory] = useState(false);
@@ -80,7 +82,9 @@ export function IndexPage() {
     setHasNextWord(Boolean(nextWord));
   };
 
-  const buildGeneratedImage = async (value: Translation): Promise<string> => {
+  const buildGeneratedImages = async (
+    value: Translation
+  ): Promise<{ storyImageDataUrl: string; postImageDataUrl: string }> => {
     let backgroundImage = FALLBACK_BACKGROUND_IMAGE;
 
     try {
@@ -90,7 +94,12 @@ export function IndexPage() {
       toast.error(`${message} Using fallback background image.`);
     }
 
-    return generateTranslationPostImage(value, backgroundImage);
+    const [storyImageDataUrl, postImageDataUrl] = await Promise.all([
+      generateTranslationStoryImage(value, backgroundImage),
+      generateTranslationPostImage(value, backgroundImage)
+    ]);
+
+    return { storyImageDataUrl, postImageDataUrl };
   };
 
   const loadWord = async (loader: () => Promise<LanguageWordRecord>) => {
@@ -107,8 +116,12 @@ export function IndexPage() {
     }
   };
 
+  const loadQueueHead = async () => {
+    await loadWord(getNextUnpublishedWord);
+  };
+
   useEffect(() => {
-    void loadWord(getNextUnpublishedWord);
+    void loadQueueHead();
   }, []);
 
   useEffect(() => {
@@ -119,10 +132,12 @@ export function IndexPage() {
     let isActive = true;
     setIsGeneratingImage(true);
 
-    void buildGeneratedImage(translation)
-      .then((image) => {
+    void buildGeneratedImages(translation)
+      .then((images) => {
         if (isActive) {
-          setPreviewImage(image);
+          setStoryImage(images.storyImageDataUrl);
+          setPostImage(images.postImageDataUrl);
+          setPreviewImage(images.storyImageDataUrl);
         }
       })
       .catch((error) => {
@@ -170,21 +185,27 @@ export function IndexPage() {
     setters[mode](true);
 
     try {
-      const image = previewImage || (await buildGeneratedImage(translation));
-      if (!previewImage) {
-        setPreviewImage(image);
+      let nextStoryImage = storyImage;
+      let nextPostImage = postImage;
+
+      if (!nextStoryImage || !nextPostImage) {
+        const generatedImages = await buildGeneratedImages(translation);
+        nextStoryImage = generatedImages.storyImageDataUrl;
+        nextPostImage = generatedImages.postImageDataUrl;
+        setStoryImage(nextStoryImage);
+        setPostImage(nextPostImage);
+        setPreviewImage(nextStoryImage);
       }
 
       const result = await publishGeneratedImageToInstagram(
-        image,
+        nextStoryImage,
         buildCaption(translation),
         translation,
         mode,
-        currentWord.global_position
+        currentWord.global_position,
+        nextStoryImage,
+        nextPostImage
       );
-
-      const refreshedWord = await getWordByPosition(currentWord.global_position);
-      setCurrentWord(refreshedWord);
 
       if (mode === "story") {
         toast.success(`Story published${result.storyId ? ` (${result.storyId})` : ""}.`);
@@ -193,6 +214,8 @@ export function IndexPage() {
       } else {
         toast.success("Post and story published.");
       }
+
+      await loadQueueHead();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Instagram publish failed.";
       toast.error(message);
@@ -221,7 +244,7 @@ export function IndexPage() {
 
           <div className="space-y-2">
             <p className="text-sm font-medium">Preview</p>
-            <div className="overflow-hidden rounded-lg border bg-slate-200">
+            <div className="mx-auto max-w-[360px] overflow-hidden rounded-lg border bg-slate-200">
               {previewImage ? (
                 <img
                   src={previewImage}
@@ -229,7 +252,7 @@ export function IndexPage() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="flex h-[640px] items-center justify-center text-sm text-slate-600">
+                <div className="flex aspect-[9/16] items-center justify-center text-sm text-slate-600">
                   {isLoadingWord || isGeneratingImage ? "Generating image..." : "Preview not available."}
                 </div>
               )}

@@ -69,7 +69,9 @@ export async function publishGeneratedImageToInstagram(
   caption: string,
   translation: Translation,
   publishMode: "story" | "post" | "story_post",
-  globalPosition: number
+  globalPosition: number,
+  storyImageDataUrl?: string,
+  postImageDataUrl?: string
 ): Promise<PublishResponse> {
   const { supabaseUrl, publishableKey } = getSupabaseConfig();
 
@@ -85,6 +87,8 @@ export async function publishGeneratedImageToInstagram(
     {
       action,
       imageDataUrl,
+      storyImageDataUrl,
+      postImageDataUrl,
       caption,
       translation,
       globalPosition

@@ -6,6 +6,8 @@ const CORS_HEADERS = {
 interface SaveRequest {
   action: "save";
   imageDataUrl: string;
+  storyImageDataUrl?: string;
+  postImageDataUrl?: string;
   imgbbApiKey?: string;
   caption?: string;
   translation?: TranslationPayload;
@@ -14,6 +16,8 @@ interface SaveRequest {
 interface PublishRequest {
   action: "publish_story" | "publish_post" | "publish_story_post";
   imageDataUrl: string;
+  storyImageDataUrl?: string;
+  postImageDataUrl?: string;
   caption: string;
   imgbbApiKey?: string;
   instagramAccessToken?: string;
@@ -331,9 +335,8 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Missing IMGBB_API_KEY secret (or runtime key)." }, 400);
     }
 
-    const imageUrl = await uploadToImgBB(body.imageDataUrl, imgbbApiKey);
-
     if (body.action === "save") {
+      const imageUrl = await uploadToImgBB(body.imageDataUrl, imgbbApiKey);
       await logPostEvent({
         translation: body.translation,
         caption: body.caption,
@@ -355,29 +358,36 @@ Deno.serve(async (request) => {
       let postId: string | undefined;
       let storyId: string | undefined;
       const publicationTimestamp = new Date().toISOString();
+      let responseImageUrl = "";
 
       if (body.action === "publish_post" || body.action === "publish_story_post") {
-        const postCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, caption, "IMAGE");
+        const postImageUrl = await uploadToImgBB(body.postImageDataUrl ?? body.imageDataUrl, imgbbApiKey);
+        const postCreationId = await createInstagramContainer(igUserId, instagramToken, postImageUrl, caption, "IMAGE");
         postId = await publishInstagramContainerForUser(igUserId, instagramToken, postCreationId);
         await updateLanguageWordPublication(body.globalPosition, `post:${publicationTimestamp}`);
+        responseImageUrl = postImageUrl;
       }
 
       if (body.action === "publish_story" || body.action === "publish_story_post") {
-        const storyCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, "", "STORIES");
+        const storyImageUrl = await uploadToImgBB(body.storyImageDataUrl ?? body.imageDataUrl, imgbbApiKey);
+        const storyCreationId = await createInstagramContainer(igUserId, instagramToken, storyImageUrl, "", "STORIES");
         storyId = await publishInstagramContainerForUser(igUserId, instagramToken, storyCreationId);
         await updateLanguageWordPublication(body.globalPosition, `story:${publicationTimestamp}`);
+        if (!responseImageUrl) {
+          responseImageUrl = storyImageUrl;
+        }
       }
 
       await logPostEvent({
         translation: body.translation,
         caption,
-        imageUrl,
+        imageUrl: responseImageUrl,
         instagramMediaId: [postId ? `post:${postId}` : "", storyId ? `story:${storyId}` : ""].filter(Boolean).join(";"),
         status: "publish_succeeded"
       });
 
       return jsonResponse({
-        imageUrl,
+        imageUrl: responseImageUrl,
         postId,
         storyId
       });
@@ -386,7 +396,7 @@ Deno.serve(async (request) => {
       await logPostEvent({
         translation: body.translation,
         caption,
-        imageUrl,
+        imageUrl: undefined,
         status: "publish_failed",
         errorMessage: message
       });

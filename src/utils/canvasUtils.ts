@@ -1,7 +1,11 @@
 import { Translation } from "@/types/translation";
 
-const CANVAS_WIDTH = 1080;
-const CANVAS_HEIGHT = 1080;
+const STORY_WIDTH = 1080;
+const STORY_HEIGHT = 1920;
+const POST_WIDTH = 1080;
+const POST_HEIGHT = 1350;
+
+type LayoutMode = "story" | "post";
 
 async function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -19,6 +23,21 @@ function toJpegDataUrl(canvas: HTMLCanvasElement): string {
     throw new Error("Image generation failed. Please try again.");
   }
   return dataUrl;
+}
+
+function drawCoverImage(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  targetWidth: number,
+  targetHeight: number
+): void {
+  const scale = Math.max(targetWidth / image.width, targetHeight / image.height);
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  const offsetX = (targetWidth - drawWidth) / 2;
+  const offsetY = (targetHeight - drawHeight) / 2;
+
+  ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
 }
 
 function drawFittedText(
@@ -42,13 +61,59 @@ function drawFittedText(
   ctx.fillText(text, x, y);
 }
 
-export async function generateTranslationPostImage(
+function getLayout(mode: LayoutMode) {
+  if (mode === "story") {
+    return {
+      width: STORY_WIDTH,
+      height: STORY_HEIGHT,
+      overlayOpacity: 0.5,
+      contentWidth: 820,
+      sectionHeight: 208,
+      gap: 44,
+      topOffset: -20,
+      titleSize: 34,
+      titleOffset: -56,
+      wordSize: 66,
+      wordMinSize: 54,
+      wordOffset: 0,
+      phraseSize: 28,
+      phraseMinSize: 22,
+      phraseOffset: 62,
+      sidePadding: 210,
+      boxOpacity: 0.18
+    };
+  }
+
+  return {
+    width: POST_WIDTH,
+    height: POST_HEIGHT,
+    overlayOpacity: 0.5,
+    contentWidth: 860,
+    sectionHeight: 188,
+    gap: 38,
+    topOffset: -12,
+    titleSize: 34,
+    titleOffset: -50,
+    wordSize: 62,
+    wordMinSize: 52,
+    wordOffset: 0,
+    phraseSize: 28,
+    phraseMinSize: 22,
+    phraseOffset: 58,
+    sidePadding: 210,
+    boxOpacity: 0.18
+  };
+}
+
+async function generateTranslationImage(
   translation: Translation,
-  backgroundUrl: string
+  backgroundUrl: string,
+  mode: LayoutMode
 ): Promise<string> {
+  const layout = getLayout(mode);
   const canvas = document.createElement("canvas");
-  canvas.width = CANVAS_WIDTH;
-  canvas.height = CANVAS_HEIGHT;
+  canvas.width = layout.width;
+  canvas.height = layout.height;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) {
@@ -57,18 +122,14 @@ export async function generateTranslationPostImage(
 
   const image = await loadImage(backgroundUrl);
 
-  ctx.drawImage(image, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  drawCoverImage(ctx, image, layout.width, layout.height);
 
-  // Global dim layer for readability.
-  ctx.fillStyle = "rgba(0, 0, 0, 0.46)";
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.fillStyle = `rgba(0, 0, 0, ${layout.overlayOpacity})`;
+  ctx.fillRect(0, 0, layout.width, layout.height);
 
-  const contentWidth = 890;
-  const contentX = (CANVAS_WIDTH - contentWidth) / 2;
-  const sectionHeight = 196;
-  const gap = 26;
-  const totalHeight = sectionHeight * 3 + gap * 2;
-  const startY = (CANVAS_HEIGHT - totalHeight) / 2 - 12;
+  const contentX = (layout.width - layout.contentWidth) / 2;
+  const totalHeight = layout.sectionHeight * 3 + layout.gap * 2;
+  const startY = (layout.height - totalHeight) / 2 + layout.topOffset;
 
   const sections = [
     {
@@ -92,22 +153,53 @@ export async function generateTranslationPostImage(
   ctx.textBaseline = "middle";
 
   sections.forEach((section, index) => {
-    const y = startY + index * (sectionHeight + gap);
-    const centerX = CANVAS_WIDTH / 2;
-    const centerY = y + sectionHeight / 2;
+    const y = startY + index * (layout.sectionHeight + layout.gap);
+    const centerX = layout.width / 2;
+    const centerY = y + layout.sectionHeight / 2;
 
-    // Grey translucent box behind each language block.
-    ctx.fillStyle = "rgba(150, 150, 150, 0.26)";
-    ctx.fillRect(contentX, y, contentWidth, sectionHeight);
+    ctx.fillStyle = `rgba(140, 140, 140, ${layout.boxOpacity})`;
+    ctx.fillRect(contentX, y, layout.contentWidth, layout.sectionHeight);
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "700 46px Inter, sans-serif";
-    ctx.fillText(section.title, centerX, centerY - 56);
+    ctx.font = `700 ${layout.titleSize}px Inter, sans-serif`;
+    ctx.fillText(section.title, centerX, centerY + layout.titleOffset);
 
-    drawFittedText(ctx, section.word, centerX, centerY + 2, contentWidth - 120, 82, 56, 800);
+    drawFittedText(
+      ctx,
+      section.word,
+      centerX,
+      centerY + layout.wordOffset,
+      layout.contentWidth - layout.sidePadding,
+      layout.wordSize,
+      layout.wordMinSize,
+      800
+    );
 
-    drawFittedText(ctx, section.phrase, centerX, centerY + 68, contentWidth - 120, 48, 32, 500);
+    drawFittedText(
+      ctx,
+      section.phrase,
+      centerX,
+      centerY + layout.phraseOffset,
+      layout.contentWidth - layout.sidePadding,
+      layout.phraseSize,
+      layout.phraseMinSize,
+      500
+    );
   });
 
   return toJpegDataUrl(canvas);
+}
+
+export async function generateTranslationStoryImage(
+  translation: Translation,
+  backgroundUrl: string
+): Promise<string> {
+  return generateTranslationImage(translation, backgroundUrl, "story");
+}
+
+export async function generateTranslationPostImage(
+  translation: Translation,
+  backgroundUrl: string
+): Promise<string> {
+  return generateTranslationImage(translation, backgroundUrl, "post");
 }
