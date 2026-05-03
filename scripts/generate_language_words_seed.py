@@ -144,7 +144,7 @@ CATEGORY_WORDS = {
         'art','reading','writing','drawing','painting','guitar','piano','picnic','concert','theater',
         'hobby','fun','chat','date','festival','vacation','football','tennis','swimming','cycling',
         'hiking','photography','series','podcast','friendship','celebration','wedding','birthday','weekend','museum',
-        'library','camping','yoga','karaoke','laughter','smile','performance','ticketstub','picnicbasket','fireworks'
+        'library','camping','yoga','karaoke','laughter','smile','performance','souvenir','campfire','fireworks'
     ]
 }
 
@@ -161,7 +161,7 @@ def beginner_phrase(category: str, word: str) -> str:
             'yesterday': 'I left yesterday.', 'here': 'Wait for me here.', 'there': 'The station is there.',
             'more': 'I need more water.', 'less': 'I need less sugar.', 'enough': 'That is enough now.',
             'again': 'Please say it again.', 'name': 'What is your name?', 'address': 'What is your address?',
-            'phone': 'My phone is here.', 'number': 'What number is it?', 'message': 'I sent a message.',
+            'phone': 'My phone is here.', 'number': 'What is the number?', 'message': 'I sent a message.',
             'open': 'The store is open.', 'closed': 'The bank is closed.', 'ready': 'I am ready now.',
             'okay': 'Okay, let us go.', 'important': 'This is important.', 'left': 'Turn left here.',
             'inside': 'Please come inside.', 'outside': 'Wait for me outside.', 'entry': 'Where is the entry?',
@@ -255,7 +255,7 @@ def beginner_phrase(category: str, word: str) -> str:
             'payment':'The payment is complete.','invoice':'Please send the invoice.','available':'This size is available.','stock':'Is it in stock?',
             'online':'I ordered it online.','delivery':'The delivery comes today.','pickup':'Pickup is at noon.','package':'The package arrived today.',
             'quality':'The quality is good.','warranty':'Does it have warranty?','new':'I want something new.','used':'This item is used.',
-            'medium':'I need medium size.','fitting':'Where is the fitting room?','queue':'The queue is long.','basket':'Put it in basket.',
+            'medium':'I need medium size.','fitting':'Where is the fitting room?','queue':'The queue is long.','basket':'Put it in the basket.',
             'mall':'The mall closes early.','checkout':'Go to checkout now.','coupon':'I have a coupon.','barcode':'Scan the barcode, please.',
             'exchange':'Can I exchange this?','purchase':'This was my purchase.','shop':'The shop is open.','size':'What size is this?',
             'color':'I want that color.','product':'This product is cheap.','brand':'I know this brand.','model':'I want this model.','gift':'This is a gift.','sale':'The sale starts today.'
