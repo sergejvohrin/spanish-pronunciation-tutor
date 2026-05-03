@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { generateSpanishTtsAudio } from "@/services/huggingFaceTtsService";
+import { generateSpanishTutorVideo } from "@/services/huggingFaceVideoService";
 
 type PhraseLesson = {
   phrase: string;
@@ -28,6 +29,15 @@ const LESSONS: PhraseLesson[] = [
     tips: ["GRA is one beat, not 'gruh-A'.", "C before I sounds like S in Latin American Spanish.", "End with 'syas' (soft 'y' sound)."]
   }
 ];
+
+const AI_VIDEO_PROMPT = [
+  "Create a vertical educational video for Instagram (9:16).",
+  "Show a young Spanish woman, age 27, with straight black hair,",
+  "wearing a red bow on her head and a red flamenco dress.",
+  "She is a language tutor and clearly teaches pronunciation for these words:",
+  "Hola, Como estas, Gracias.",
+  "Include visible text captions for each word and pronunciation guidance."
+].join(" ");
 
 function pickSpanishVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   const preferred = voices.filter((voice) => {
@@ -203,6 +213,9 @@ export function PronunciationTutorPage() {
   const [rate, setRate] = useState<"slow" | "normal">("normal");
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string>("");
+  const [isGeneratingAiVideo, setIsGeneratingAiVideo] = useState(false);
+  const [aiVideoUrl, setAiVideoUrl] = useState<string>("");
+  const [aiVideoMeta, setAiVideoMeta] = useState<string>("");
 
   const selectedVoice = useMemo(() => pickSpanishVoice(voices), [voices]);
   const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
@@ -376,6 +389,33 @@ export function PronunciationTutorPage() {
     }
   };
 
+  const handleGenerateAiTutorVideo = async () => {
+    setIsGeneratingAiVideo(true);
+    setAiVideoUrl("");
+    setAiVideoMeta("");
+
+    try {
+      const result = await generateSpanishTutorVideo(AI_VIDEO_PROMPT);
+      const nextUrl = (result.videoDataUrl ?? "").trim();
+      if (!nextUrl) {
+        throw new Error("AI video response did not include video output.");
+      }
+
+      setAiVideoUrl(nextUrl);
+      setAiVideoMeta(
+        [result.provider ? `Provider: ${result.provider}` : "", result.model ? `Model: ${result.model}` : ""]
+          .filter(Boolean)
+          .join(" | ")
+      );
+      toast.success("AI tutor video generated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "AI video generation failed.";
+      toast.error(message);
+    } finally {
+      setIsGeneratingAiVideo(false);
+    }
+  };
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 p-4 md:p-8">
       <Card>
@@ -455,6 +495,19 @@ export function PronunciationTutorPage() {
                   Note: Instagram prefers MP4/H.264. If needed, convert the downloaded WebM to MP4 before uploading.
                 </p>
               </div>
+
+              <div className="rounded-md border bg-white p-4 text-sm text-slate-700">
+                <p className="font-semibold text-slate-900">AI video generator (Hugging Face)</p>
+                <p className="mt-1">
+                  Generates a tutor video with your specified character and the words Hola, Como estas, Gracias.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" onClick={() => void handleGenerateAiTutorVideo()} disabled={isGeneratingAiVideo}>
+                    {isGeneratingAiVideo ? "Generating AI video..." : "Generate AI tutor video"}
+                  </Button>
+                </div>
+                {aiVideoMeta ? <p className="mt-3 text-xs text-slate-500">{aiVideoMeta}</p> : null}
+              </div>
             </div>
           </div>
 
@@ -465,6 +518,21 @@ export function PronunciationTutorPage() {
                 <video
                   className="h-full w-full"
                   src={videoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {aiVideoUrl ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">AI video preview</p>
+              <div className="mx-auto max-w-[360px] overflow-hidden rounded-lg border bg-slate-200">
+                <video
+                  className="h-full w-full"
+                  src={aiVideoUrl}
                   controls
                   playsInline
                   preload="metadata"
