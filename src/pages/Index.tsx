@@ -15,10 +15,10 @@ const FALLBACK_BACKGROUND_IMAGE = "https://images.pexels.com/photos/457882/pexel
 
 function buildCaption(translation: Translation): string {
   return [
-    `EN: ${translation.english.word} - ${translation.english.phrase}`,
-    `ES: ${translation.spanish.word} - ${translation.spanish.phrase}`,
-    `CA: ${translation.catalan.word} - ${translation.catalan.phrase}`,
-    "#languages #english #spanish #catalan"
+    `🇬🇧 ${translation.english.word}. ${translation.english.phrase}`,
+    `🇪🇸 ${translation.spanish.word}. ${translation.spanish.phrase}`,
+    `🔴🟡 ${translation.catalan.word}. ${translation.catalan.phrase}`,
+    "#languages #english #spanish #catalan #barcelona #digital_nomads #keeplearning #madrid"
   ].join("\n");
 }
 
