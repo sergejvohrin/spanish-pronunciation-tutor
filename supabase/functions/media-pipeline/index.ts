@@ -250,6 +250,38 @@ async function publishInstagramContainerForUser(
   return data.id;
 }
 
+async function waitForInstagramContainerReady(creationId: string, token: string): Promise<void> {
+  const maxAttempts = 12;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/${creationId}?fields=status_code,status&access_token=${encodeURIComponent(token)}`
+    );
+    const data = (await response.json()) as {
+      status_code?: string;
+      status?: string;
+      error?: { message?: string };
+    };
+
+    if (!response.ok) {
+      throw new PipelineError(data.error?.message ?? "Failed to inspect Instagram media container.", 400);
+    }
+
+    const status = (data.status_code ?? data.status ?? "").toUpperCase();
+    if (status === "FINISHED" || status === "PUBLISHED") {
+      return;
+    }
+
+    if (status === "ERROR" || status === "EXPIRED") {
+      throw new PipelineError(`Instagram media container status: ${status}`, 400);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+
+  throw new PipelineError("Instagram media container was not ready in time.", 400);
+}
+
 async function inspectInstagramPublishingTarget(token: string): Promise<{ igUserId: string; pagesCount: number }> {
   const configuredId = (Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ?? "").trim();
   if (configuredId) {
@@ -363,6 +395,7 @@ Deno.serve(async (request) => {
       if (body.action === "publish_post" || body.action === "publish_story_post") {
         const postImageUrl = await uploadToImgBB(body.postImageDataUrl ?? body.imageDataUrl, imgbbApiKey);
         const postCreationId = await createInstagramContainer(igUserId, instagramToken, postImageUrl, caption, "IMAGE");
+        await waitForInstagramContainerReady(postCreationId, instagramToken);
         postId = await publishInstagramContainerForUser(igUserId, instagramToken, postCreationId);
         await updateLanguageWordPublication(body.globalPosition, `post:${publicationTimestamp}`);
         responseImageUrl = postImageUrl;
@@ -371,6 +404,7 @@ Deno.serve(async (request) => {
       if (body.action === "publish_story" || body.action === "publish_story_post") {
         const storyImageUrl = await uploadToImgBB(body.storyImageDataUrl ?? body.imageDataUrl, imgbbApiKey);
         const storyCreationId = await createInstagramContainer(igUserId, instagramToken, storyImageUrl, "", "STORIES");
+        await waitForInstagramContainerReady(storyCreationId, instagramToken);
         storyId = await publishInstagramContainerForUser(igUserId, instagramToken, storyCreationId);
         await updateLanguageWordPublication(body.globalPosition, `story:${publicationTimestamp}`);
         if (!responseImageUrl) {
