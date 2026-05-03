@@ -48,6 +48,7 @@ supabase db push
 
 ```bash
 supabase functions deploy hf-tts --no-verify-jwt
+supabase functions deploy hf-video --no-verify-jwt
 ```
 
 ## 6) Set Supabase secrets (server-side)
@@ -57,7 +58,8 @@ If you are only using the tutor, you only need Hugging Face TTS:
 ```bash
 supabase secrets set \
   HF_API_TOKEN="$HF_API_TOKEN" \
-  HF_TTS_MODEL="$HF_TTS_MODEL"
+  HF_TTS_MODEL="$HF_TTS_MODEL" \
+  HF_VIDEO_MODEL="$HF_VIDEO_MODEL"
 ```
 
 ## 7) Update GitHub repo variables/secrets
@@ -70,6 +72,7 @@ Repository variables:
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_PROJECT_REF` (set to `dwcluddjjximecioomwu`)
 - `HF_TTS_MODEL` (optional, defaults to `facebook/mms-tts-spa` fallback)
+- `HF_VIDEO_MODEL` (recommended: `Lightricks/LTX-Video`)
 
 Repository secrets:
 

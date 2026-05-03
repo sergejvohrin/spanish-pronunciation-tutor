@@ -20,6 +20,7 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
       HF_TTS_MODEL: ${{ vars.HF_TTS_MODEL }}
+      HF_VIDEO_MODEL: ${{ vars.HF_VIDEO_MODEL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -50,13 +51,17 @@ jobs:
       - name: Set Supabase secrets
         run: |
           set -euo pipefail
+          SECRET_ARGS=(HF_API_TOKEN="$HF_API_TOKEN")
           if [ -n "${HF_TTS_MODEL:-}" ]; then
-            npx supabase@latest secrets set HF_API_TOKEN="$HF_API_TOKEN" HF_TTS_MODEL="$HF_TTS_MODEL" --project-ref "$PROJECT_REF"
-          else
-            npx supabase@latest secrets set HF_API_TOKEN="$HF_API_TOKEN" --project-ref "$PROJECT_REF"
+            SECRET_ARGS+=(HF_TTS_MODEL="$HF_TTS_MODEL")
           fi
+          if [ -n "${HF_VIDEO_MODEL:-}" ]; then
+            SECRET_ARGS+=(HF_VIDEO_MODEL="$HF_VIDEO_MODEL")
+          fi
+          npx supabase@latest secrets set "${SECRET_ARGS[@]}" --project-ref "$PROJECT_REF"
 
       - name: Deploy edge functions
         run: |
           set -euo pipefail
           npx supabase@latest functions deploy hf-tts --no-verify-jwt --project-ref "$PROJECT_REF"
+          npx supabase@latest functions deploy hf-video --no-verify-jwt --project-ref "$PROJECT_REF"
