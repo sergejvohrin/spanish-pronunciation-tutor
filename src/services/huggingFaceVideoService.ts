@@ -15,17 +15,27 @@ export async function generateSpanishTutorVideo(prompt: string): Promise<Generat
     throw new Error("Missing Supabase URL or publishable key.");
   }
 
-  const response = await axios.post<GenerateVideoResponse>(
-    `${supabaseUrl}/functions/v1/hf-video`,
-    { prompt },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        apikey: publishableKey,
-        Authorization: `Bearer ${publishableKey}`
+  try {
+    const response = await axios.post<GenerateVideoResponse>(
+      `${supabaseUrl}/functions/v1/hf-video`,
+      { prompt },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          apikey: publishableKey,
+          Authorization: `Bearer ${publishableKey}`
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const backendError = error.response?.data as { error?: string } | undefined;
+      if (backendError?.error) {
+        throw new Error(backendError.error);
       }
     }
-  );
-
-  return response.data;
+    throw error;
+  }
 }
