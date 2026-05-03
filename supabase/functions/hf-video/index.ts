@@ -194,6 +194,29 @@ async function generateVideo(
   );
 }
 
+async function pickWorkingVideoModel(token: string): Promise<string> {
+  const candidates = [
+    Deno.env.get("HF_VIDEO_MODEL"),
+    "Lightricks/LTX-Video",
+    "genmo/mochi-1-preview",
+    "THUDM/CogVideoX-2b"
+  ].filter((value): value is string => Boolean(value && value.trim()));
+
+  for (const candidate of candidates) {
+    const mapping = await getModelProviderMapping(candidate, token);
+    const hasLiveVideoProvider = Object.values(mapping).some(
+      (providerInfo) =>
+        providerInfo.status === "live" &&
+        (providerInfo.task === "text-to-video" || providerInfo.task === "image-to-video")
+    );
+    if (hasLiveVideoProvider) {
+      return candidate;
+    }
+  }
+
+  throw new Error("No compatible Hugging Face text-to-video model is live for this token.");
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -211,14 +234,13 @@ Deno.serve(async (request) => {
   try {
     const payload = (await request.json()) as { prompt?: string; model?: string };
     const prompt = (payload.prompt ?? "").trim();
-    const model = (payload.model ?? Deno.env.get("HF_VIDEO_MODEL") ?? "Lightricks/LTX-Video").trim();
+    const requestedModel = (payload.model ?? "").trim();
 
     if (!prompt) {
       return jsonResponse({ error: "Missing 'prompt'." }, 400);
     }
-    if (!model) {
-      return jsonResponse({ error: "Missing 'model'." }, 400);
-    }
+
+    const model = requestedModel || (await pickWorkingVideoModel(hfApiToken));
 
     const result = await generateVideo(prompt.slice(0, 500), model, hfApiToken);
     return jsonResponse(result);
