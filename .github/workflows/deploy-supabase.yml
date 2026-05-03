@@ -1,0 +1,57 @@
+name: Deploy Supabase
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "supabase/**"
+      - ".github/workflows/deploy-supabase.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
+      HF_TTS_MODEL: ${{ vars.HF_TTS_MODEL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] || { echo "Missing SUPABASE_ACCESS_TOKEN secret" >&2; exit 1; }
+          [ -n "${PROJECT_REF:-}" ] || { echo "Missing SUPABASE_PROJECT_REF repository variable" >&2; exit 1; }
+          [ -n "${HF_API_TOKEN:-}" ] || { echo "Missing HF_API_TOKEN secret" >&2; exit 1; }
+
+      - name: Apply database migrations
+        run: |
+          set -euo pipefail
+          npx supabase@latest db push --project-ref "$PROJECT_REF"
+
+      - name: Set Supabase secrets
+        run: |
+          set -euo pipefail
+          if [ -n "${HF_TTS_MODEL:-}" ]; then
+            npx supabase@latest secrets set HF_API_TOKEN="$HF_API_TOKEN" HF_TTS_MODEL="$HF_TTS_MODEL" --project-ref "$PROJECT_REF"
+          else
+            npx supabase@latest secrets set HF_API_TOKEN="$HF_API_TOKEN" --project-ref "$PROJECT_REF"
+          fi
+
+      - name: Deploy edge functions
+        run: |
+          set -euo pipefail
+          npx supabase@latest functions deploy hf-tts --no-verify-jwt --project-ref "$PROJECT_REF"
+

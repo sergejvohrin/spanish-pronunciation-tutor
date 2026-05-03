@@ -18,14 +18,9 @@ A React + TypeScript app that previews an AI-generated Spanish tutor and generat
 
 ## Project Structure
 
-- `src/services/translationService.ts` - random translation data
-- `src/services/huggingFaceService.ts` - calls Supabase Edge Function for AI translation generation
-- `src/services/mediaPipelineService.ts` - save/publish/readiness calls through Supabase Edge Function
-- `src/utils/canvasUtils.ts` - Canvas image composition
-- `src/pages/Index.tsx` - main UI page
-- `supabase/functions/hf-translation/index.ts` - backend Hugging Face translation integration
-- `supabase/functions/hf-image/index.ts` - backend Hugging Face image generation
-- `supabase/functions/media-pipeline/index.ts` - backend ImgBB upload, Instagram publish, readiness check, Supabase logging
+- `src/pages/PronunciationTutor.tsx` - tutor UI + video export
+- `src/services/huggingFaceTtsService.ts` - calls Supabase Edge Function for TTS
+- `supabase/functions/hf-tts/index.ts` - backend Hugging Face text-to-speech (Spanish audio)
 
 ## Local Run
 
@@ -49,10 +44,10 @@ This repo includes a GitHub Actions workflow that deploys the Vite build to GitH
 
 ## Cloud-Ready Checklist
 
-- Supabase schema is versioned in `supabase/migrations/20260225_create_post_logs.sql`.
+- Supabase schema is versioned in `supabase/migrations/`.
 - Frontend runtime config is env-driven (`.env.example`).
 - Local secret files are git-ignored (`.env.local`, `.env.*`).
-- Instagram, ImgBB, and Hugging Face keys are expected in Supabase Edge Function secrets.
+- Hugging Face keys are expected in Supabase Edge Function secrets.
 - Vercel deployment config is included (`vercel.json`).
 
 ## Runtime Credentials (Security)
@@ -60,7 +55,7 @@ This repo includes a GitHub Actions workflow that deploys the Vite build to GitH
 - No user-facing credential entry is required in production.
 - No `localStorage` persistence.
 - No hardcoded API keys.
-- Hugging Face, ImgBB, and Instagram credentials are backend-only via Supabase function secrets.
+- Hugging Face credentials are backend-only via Supabase function secrets.
 
 Use `.env.example` as your single config template. Copy to `.env.local` and fill values:
 
@@ -75,26 +70,14 @@ supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
 supabase secrets set \
   HF_API_TOKEN="$HF_API_TOKEN" \
-  HF_MODEL="$HF_MODEL" \
-  HF_IMAGE_MODEL="$HF_IMAGE_MODEL" \
-  IMGBB_API_KEY="$IMGBB_API_KEY" \
-  INSTAGRAM_ACCESS_TOKEN="$INSTAGRAM_ACCESS_TOKEN" \
-  INSTAGRAM_BUSINESS_ACCOUNT_ID="$INSTAGRAM_BUSINESS_ACCOUNT_ID" \
-  META_APP_ID="$META_APP_ID" \
-  META_APP_SECRET="$META_APP_SECRET" \
-  TOKEN_ROTATION_SECRET="$TOKEN_ROTATION_SECRET" \
   --project-ref "$SUPABASE_PROJECT_REF"
 ```
 
-`INSTAGRAM_BUSINESS_ACCOUNT_ID` is optional. If it is set, the backend skips Facebook Page discovery and publishes directly to that IG business account.
-
 ## Backend Flow
 
-1. The frontend generates the preview image locally with Canvas.
-2. Supabase Edge Functions generate AI translations and AI Spain-themed images.
-3. Supabase `media-pipeline` uploads the final image to ImgBB.
-4. Supabase `media-pipeline` checks Instagram readiness or publishes story + feed post.
-5. Save and publish events are logged to `public.post_logs`.
+1. The frontend renders the tutor preview and lesson cards.
+2. Supabase `hf-tts` generates Spanish speech audio via Hugging Face.
+3. The frontend exports a vertical WebM video using Canvas + MediaRecorder (with audio if available).
 
 ## Supabase Setup
 
@@ -103,20 +86,13 @@ Deploy the edge functions and set secrets in Supabase:
 ```bash
 supabase login
 supabase link --project-ref "$SUPABASE_PROJECT_REF"
-supabase secrets set HF_API_TOKEN=your_huggingface_token HF_MODEL=google/flan-t5-base HF_IMAGE_MODEL=black-forest-labs/FLUX.1-schnell IMGBB_API_KEY=your_imgbb_api_key INSTAGRAM_ACCESS_TOKEN=your_long_lived_instagram_token
-supabase functions deploy hf-translation --no-verify-jwt
-supabase functions deploy hf-image --no-verify-jwt
+supabase secrets set HF_API_TOKEN=your_huggingface_token
 supabase functions deploy hf-tts --no-verify-jwt
-supabase functions deploy media-pipeline --no-verify-jwt
-supabase functions deploy refresh-instagram-token --no-verify-jwt
 ```
 
 The frontend calls these endpoints:
 
-- `POST https://<project-ref>.supabase.co/functions/v1/hf-translation`
-- `POST https://<project-ref>.supabase.co/functions/v1/hf-image`
-- `POST https://<project-ref>.supabase.co/functions/v1/media-pipeline`
-- `POST https://<project-ref>.supabase.co/functions/v1/refresh-instagram-token`
+- `POST https://<project-ref>.supabase.co/functions/v1/hf-tts`
 
 ## Automatic Instagram Token Rotation
 
