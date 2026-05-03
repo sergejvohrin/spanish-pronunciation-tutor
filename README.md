@@ -1,16 +1,20 @@
-# Multilingual Word Translation Instagram Post Generator
+# Spanish Pronunciation Tutor (Video MVP)
 
-A React + TypeScript app that generates square translation posts (English, Spanish, Catalan), previews them using Canvas in-memory, uploads to ImgBB, and publishes to Instagram.
+A React + TypeScript app that previews an AI-generated Spanish tutor and generates an Instagram-style vertical video clip for pronouncing:
+
+- Hola
+- Como estas
+- Gracias
 
 ## Tech Stack
 
 - React + TypeScript
 - Tailwind CSS
 - shadcn/ui-style components
-- Canvas API
+- Canvas API (video frame renderer)
 - Axios
 - Sonner (toast notifications)
-- Supabase Edge Functions (backend secret handling for Hugging Face)
+- Supabase Edge Functions (optional, for Hugging Face TTS)
 
 ## Project Structure
 
@@ -38,6 +42,10 @@ npm run dev
 ```
 
 3. Open app URL from Vite output.
+
+## GitHub Pages Preview
+
+This repo includes a GitHub Actions workflow that deploys the Vite build to GitHub Pages on every push to `main`.
 
 ## Cloud-Ready Checklist
 
