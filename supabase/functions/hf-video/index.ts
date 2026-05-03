@@ -165,7 +165,7 @@ async function generateVideo(
     if (providerInfo.status !== "live") {
       continue;
     }
-    if (providerInfo.task !== "text-to-video" && providerInfo.task !== "image-to-video") {
+    if (providerInfo.task !== "text-to-video") {
       continue;
     }
 
@@ -197,9 +197,9 @@ async function generateVideo(
 async function pickWorkingVideoModel(token: string): Promise<string> {
   const candidates = [
     Deno.env.get("HF_VIDEO_MODEL"),
+    "Wan-AI/Wan2.1-T2V-1.3B",
     "Lightricks/LTX-Video",
-    "genmo/mochi-1-preview",
-    "THUDM/CogVideoX-2b"
+    "genmo/mochi-1-preview"
   ].filter((value): value is string => Boolean(value && value.trim()));
 
   for (const candidate of candidates) {
@@ -207,7 +207,7 @@ async function pickWorkingVideoModel(token: string): Promise<string> {
     const hasLiveVideoProvider = Object.values(mapping).some(
       (providerInfo) =>
         providerInfo.status === "live" &&
-        (providerInfo.task === "text-to-video" || providerInfo.task === "image-to-video")
+        providerInfo.task === "text-to-video"
     );
     if (hasLiveVideoProvider) {
       return candidate;
