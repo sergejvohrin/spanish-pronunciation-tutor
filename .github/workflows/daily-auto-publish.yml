@@ -19,6 +19,7 @@ jobs:
     env:
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      TOKEN_ROTATION_SECRET: ${{ secrets.TOKEN_ROTATION_SECRET }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
     steps:
       - name: Checkout
@@ -38,6 +39,7 @@ jobs:
           set -euo pipefail
           [ -n "${VITE_SUPABASE_URL:-}" ] || { echo "Missing VITE_SUPABASE_URL" >&2; exit 1; }
           [ -n "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ] || { echo "Missing VITE_SUPABASE_PUBLISHABLE_KEY" >&2; exit 1; }
+          [ -n "${TOKEN_ROTATION_SECRET:-}" ] || { echo "Missing TOKEN_ROTATION_SECRET" >&2; exit 1; }
 
       - name: Auto publish next word
         id: publish

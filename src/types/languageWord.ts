@@ -13,6 +13,8 @@ export interface LanguageWordRecord {
   spanish_phrase: string;
   catalan_phrase: string;
   published_to: string;
+  published_post_at?: string | null;
+  published_story_at?: string | null;
 }
 
 export function toTranslation(record: LanguageWordRecord): Translation {

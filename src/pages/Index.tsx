@@ -22,42 +22,35 @@ function buildCaption(translation: Translation): string {
   ].join("\n");
 }
 
-function formatPublishedTo(publishedTo: string): string {
-  const value = publishedTo.trim();
+function formatPublishedInfo(record: LanguageWordRecord | null): string {
+  if (!record) {
+    return "Loading...";
+  }
+
+  const parts: string[] = [];
+
+  if (record.published_post_at) {
+    parts.push(`Post: ${new Date(record.published_post_at).toLocaleString()}`);
+  }
+
+  if (record.published_story_at) {
+    parts.push(`Story: ${new Date(record.published_story_at).toLocaleString()}`);
+  }
+
+  if (parts.length > 0) {
+    return parts.join(" | ");
+  }
+
+  const value = record.published_to.trim();
   if (!value) {
     return "Not published yet";
   }
 
-  return value
-    .split("|")
-    .map((part) => {
-      const trimmed = part.trim();
-      const separatorIndex = trimmed.indexOf(":");
-      if (separatorIndex === -1) {
-        return trimmed;
-      }
-
-      const channel = trimmed.slice(0, separatorIndex);
-      const isoDate = trimmed.slice(separatorIndex + 1);
-
-      const parsed = new Date(isoDate);
-      if (Number.isNaN(parsed.getTime())) {
-        return trimmed;
-      }
-
-      const label =
-        channel === "story"
-          ? "Story"
-          : channel === "post"
-            ? "Post"
-            : channel.charAt(0).toUpperCase() + channel.slice(1);
-
-      return `${label}: ${parsed.toLocaleString()}`;
-    })
-    .join(" | ");
+  return value;
 }
 
 export function IndexPage() {
+  const manualPublishingEnabled = import.meta.env.DEV;
   const [currentWord, setCurrentWord] = useState<LanguageWordRecord | null>(null);
   const [previewImage, setPreviewImage] = useState("");
   const [storyImage, setStoryImage] = useState("");
@@ -261,7 +254,12 @@ export function IndexPage() {
 
           <div className="rounded-md border bg-white p-4 text-sm text-slate-700">
             <p className="font-semibold text-slate-900">Published</p>
-            <p className="mt-1">{currentWord ? formatPublishedTo(currentWord.published_to) : "Loading..."}</p>
+            <p className="mt-1">{formatPublishedInfo(currentWord)}</p>
+            {!manualPublishingEnabled ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Live publishing is locked to the server-side scheduler for security.
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -271,7 +269,10 @@ export function IndexPage() {
             <Button onClick={() => void handleNavigate("next")} disabled={isBusy || !hasNextWord} variant="secondary">
               Next Word
             </Button>
-            <Button onClick={() => void handlePublish("story")} disabled={isBusy || !currentWord}>
+            <Button
+              onClick={() => void handlePublish("story")}
+              disabled={!manualPublishingEnabled || isBusy || !currentWord}
+            >
               {isPostingStory ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -281,7 +282,7 @@ export function IndexPage() {
                 "Post Story"
               )}
             </Button>
-            <Button onClick={() => void handlePublish("post")} disabled={isBusy || !currentWord}>
+            <Button onClick={() => void handlePublish("post")} disabled={!manualPublishingEnabled || isBusy || !currentWord}>
               {isPostingPost ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -291,11 +292,14 @@ export function IndexPage() {
                 "Post Post"
               )}
             </Button>
-            <Button onClick={() => void handlePublish("story_post")} disabled={isBusy || !currentWord}>
+            <Button
+              onClick={() => void handlePublish("story_post")}
+              disabled={!manualPublishingEnabled || isBusy || !currentWord}
+            >
               {isPostingStoryAndPost ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Posting Both...
+                  Posting Story and Post...
                 </>
               ) : (
                 "Post Post and Story"

@@ -97,40 +97,53 @@ jobs:
             echo "$1=PASS" >> "$GITHUB_OUTPUT"
           }
 
+          post_json() {
+            local label="$1"
+            local url="$2"
+            local payload="$3"
+            local tmp_file
+            local http_code
+            tmp_file="$(mktemp)"
+            http_code="$(curl -sS --retry 3 --retry-delay 2 --retry-all-errors \
+              -o "$tmp_file" -w '%{http_code}' -X POST "$url" \
+              -H "Content-Type: application/json" \
+              -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
+              -H "Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
+              -d "$payload")"
+
+            if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+              echo "$label failed with HTTP $http_code" >&2
+              cat "$tmp_file" >&2
+              rm -f "$tmp_file"
+              exit 1
+            fi
+
+            cat "$tmp_file"
+            rm -f "$tmp_file"
+          }
+
           echo "started_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           echo "cadence_reason=${{ needs.cadence_gate.outputs.reason }}" >> "$GITHUB_OUTPUT"
           echo "elapsed_hours=${{ needs.cadence_gate.outputs.elapsed_hours }}" >> "$GITHUB_OUTPUT"
 
-          POST_LOGS_JSON=$(curl -fsS "${VITE_SUPABASE_URL}/rest/v1/post_logs?select=id,created_at,status&order=id.desc&limit=1" \
+          POST_LOGS_JSON=$(curl -sS --retry 3 --retry-delay 2 --retry-all-errors "${VITE_SUPABASE_URL}/rest/v1/post_logs?select=id,created_at,status&order=id.desc&limit=1" \
             -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
             -H "Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}")
           echo "post_logs_preview=$(echo "$POST_LOGS_JSON" | jq -c '.[0] // {}')" >> "$GITHUB_OUTPUT"
           echo "$POST_LOGS_JSON" | jq -e 'type == "array"' >/dev/null
           mark_ok post_logs_status
 
-          HF_TRANSLATION_JSON=$(curl -fsS -X POST "${VITE_SUPABASE_URL}/functions/v1/hf-translation" \
-            -H "Content-Type: application/json" \
-            -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
-            -H "Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
-            -d '{"word":"journey"}')
+          HF_TRANSLATION_JSON=$(post_json "hf-translation" "${VITE_SUPABASE_URL}/functions/v1/hf-translation" '{"word":"journey"}')
           echo "$HF_TRANSLATION_JSON" | jq -e '.translation.english.word | type == "string" and length > 0' >/dev/null
           mark_ok hf_translation_status
 
-          HF_IMAGE_JSON=$(curl -fsS -X POST "${VITE_SUPABASE_URL}/functions/v1/hf-image" \
-            -H "Content-Type: application/json" \
-            -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
-            -H "Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
-            -d '{"word":"journey"}')
+          HF_IMAGE_JSON=$(post_json "hf-image" "${VITE_SUPABASE_URL}/functions/v1/hf-image" '{"word":"journey"}')
           IMAGE_DATA_URL=$(echo "$HF_IMAGE_JSON" | jq -r '.imageDataUrl // empty')
           [ -n "$IMAGE_DATA_URL" ] || { echo "hf-image returned empty imageDataUrl" >&2; exit 1; }
           mark_ok hf_image_status
 
-          MEDIA_PIPELINE_JSON=$(jq -n --arg img "$IMAGE_DATA_URL" '{action:"save", imageDataUrl:$img}' | \
-            curl -fsS -X POST "${VITE_SUPABASE_URL}/functions/v1/media-pipeline" \
-              -H "Content-Type: application/json" \
-              -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
-              -H "Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
-              -d @-)
+          MEDIA_PIPELINE_PAYLOAD=$(jq -nc --arg img "$IMAGE_DATA_URL" '{action:"save", imageDataUrl:$img}')
+          MEDIA_PIPELINE_JSON=$(post_json "media-pipeline(save)" "${VITE_SUPABASE_URL}/functions/v1/media-pipeline" "$MEDIA_PIPELINE_PAYLOAD")
           IMGBB_URL=$(echo "$MEDIA_PIPELINE_JSON" | jq -r '.imageUrl // empty')
           [ -n "$IMGBB_URL" ] || { echo "media-pipeline save returned empty imageUrl" >&2; exit 1; }
           mark_ok media_pipeline_save_status

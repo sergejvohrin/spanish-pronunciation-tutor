@@ -1,6 +1,6 @@
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-pipeline-secret"
 };
 
 interface SaveRequest {
@@ -117,8 +117,12 @@ async function logPostEvent(params: {
   }
 }
 
-async function updateLanguageWordPublication(globalPosition: number | undefined, publicationLabel: string): Promise<void> {
-  if (!globalPosition) {
+async function updateLanguageWordPublicationState(params: {
+  globalPosition: number | undefined;
+  channel: "post" | "story";
+  publicationTimestamp: string;
+}): Promise<void> {
+  if (!params.globalPosition) {
     return;
   }
 
@@ -128,7 +132,7 @@ async function updateLanguageWordPublication(globalPosition: number | undefined,
   }
 
   const existingResponse = await fetch(
-    `${config.url}/rest/v1/language_words?select=published_to&global_position=eq.${globalPosition}&limit=1`,
+    `${config.url}/rest/v1/language_words?select=published_to&global_position=eq.${params.globalPosition}&limit=1`,
     {
       headers: {
         apikey: config.key,
@@ -145,9 +149,11 @@ async function updateLanguageWordPublication(globalPosition: number | undefined,
 
   const existingPayload = (await existingResponse.json()) as Array<{ published_to?: string }>;
   const previousValue = (existingPayload[0]?.published_to ?? "").trim();
+  const publicationLabel = `${params.channel}:${params.publicationTimestamp}`;
   const nextValue = previousValue ? `${previousValue} | ${publicationLabel}` : publicationLabel;
+  const fieldName = params.channel === "post" ? "published_post_at" : "published_story_at";
 
-  const updateResponse = await fetch(`${config.url}/rest/v1/language_words?global_position=eq.${globalPosition}`, {
+  const updateResponse = await fetch(`${config.url}/rest/v1/language_words?global_position=eq.${params.globalPosition}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -156,13 +162,14 @@ async function updateLanguageWordPublication(globalPosition: number | undefined,
       Prefer: "return=minimal"
     },
     body: JSON.stringify({
+      [fieldName]: params.publicationTimestamp,
       published_to: nextValue
     })
   });
 
   if (!updateResponse.ok) {
     const body = await updateResponse.text();
-    console.error(`language_words update failed: ${updateResponse.status} ${body}`);
+    console.error(`language_words state update failed: ${updateResponse.status} ${body}`);
   }
 }
 
@@ -342,6 +349,14 @@ Deno.serve(async (request) => {
     const fallbackInstagramToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ?? "";
     const instagramToken =
       "instagramAccessToken" in body ? (body.instagramAccessToken ?? fallbackInstagramToken).trim() : fallbackInstagramToken;
+    const protectedActions = new Set(["readiness_check", "publish_story", "publish_post", "publish_story_post"]);
+    if (protectedActions.has(body.action)) {
+      const expectedSecret = (Deno.env.get("TOKEN_ROTATION_SECRET") ?? "").trim();
+      const providedSecret = (request.headers.get("x-pipeline-secret") ?? "").trim();
+      if (!expectedSecret || providedSecret !== expectedSecret) {
+        return jsonResponse({ error: "Unauthorized publish action." }, 401);
+      }
+    }
 
     if (body.action === "readiness_check") {
       if (!instagramToken) {
@@ -397,7 +412,11 @@ Deno.serve(async (request) => {
         const postCreationId = await createInstagramContainer(igUserId, instagramToken, postImageUrl, caption, "IMAGE");
         await waitForInstagramContainerReady(postCreationId, instagramToken);
         postId = await publishInstagramContainerForUser(igUserId, instagramToken, postCreationId);
-        await updateLanguageWordPublication(body.globalPosition, `post:${publicationTimestamp}`);
+        await updateLanguageWordPublicationState({
+          globalPosition: body.globalPosition,
+          channel: "post",
+          publicationTimestamp
+        });
         responseImageUrl = postImageUrl;
       }
 
@@ -406,7 +425,11 @@ Deno.serve(async (request) => {
         const storyCreationId = await createInstagramContainer(igUserId, instagramToken, storyImageUrl, "", "STORIES");
         await waitForInstagramContainerReady(storyCreationId, instagramToken);
         storyId = await publishInstagramContainerForUser(igUserId, instagramToken, storyCreationId);
-        await updateLanguageWordPublication(body.globalPosition, `story:${publicationTimestamp}`);
+        await updateLanguageWordPublicationState({
+          globalPosition: body.globalPosition,
+          channel: "story",
+          publicationTimestamp
+        });
         if (!responseImageUrl) {
           responseImageUrl = storyImageUrl;
         }

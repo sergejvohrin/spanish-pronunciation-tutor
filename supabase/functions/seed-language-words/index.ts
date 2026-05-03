@@ -81,9 +81,14 @@ Deno.serve(async (request) => {
           english_phrase text not null,
           spanish_phrase text not null,
           catalan_phrase text not null,
-          published_to text not null default ''
+          published_to text not null default '',
+          published_post_at timestamptz null,
+          published_story_at timestamptz null
         )
       `;
+
+      await tx`alter table public.language_words add column if not exists published_post_at timestamptz null`;
+      await tx`alter table public.language_words add column if not exists published_story_at timestamptz null`;
 
       await tx`create index if not exists language_words_category_order_idx on public.language_words (category_order, category_position)`;
       await tx`create index if not exists language_words_category_idx on public.language_words (category)`;

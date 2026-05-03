@@ -11,7 +11,9 @@ create table if not exists public.language_words (
   english_phrase text not null,
   spanish_phrase text not null,
   catalan_phrase text not null,
-  published_to text not null default ''
+  published_to text not null default '',
+  published_post_at timestamptz null,
+  published_story_at timestamptz null
 );
 
 create index if not exists language_words_category_order_idx on public.language_words (category_order, category_position);

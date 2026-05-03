@@ -16,16 +16,18 @@ function requireEnv(name) {
 function getConfig() {
   return {
     supabaseUrl: requireEnv("VITE_SUPABASE_URL").replace(/\/$/, ""),
-    publishableKey: requireEnv("VITE_SUPABASE_PUBLISHABLE_KEY")
+    publishableKey: requireEnv("VITE_SUPABASE_PUBLISHABLE_KEY"),
+    pipelineSecret: requireEnv("TOKEN_ROTATION_SECRET")
   };
 }
 
 function getHeaders() {
-  const { publishableKey } = getConfig();
+  const { publishableKey, pipelineSecret } = getConfig();
   return {
     "Content-Type": "application/json",
     apikey: publishableKey,
-    Authorization: `Bearer ${publishableKey}`
+    Authorization: `Bearer ${publishableKey}`,
+    "x-pipeline-secret": pipelineSecret
   };
 }
 
@@ -45,8 +47,8 @@ async function getNextUnpublishedWord() {
   const { supabaseUrl } = getConfig();
   const url =
     `${supabaseUrl}/rest/v1/language_words` +
-    "?select=id,category,category_order,category_position,global_position,english_word,spanish_word,catalan_word,english_phrase,spanish_phrase,catalan_phrase,published_to" +
-    "&or=(published_to.is.null,published_to.eq.)" +
+    "?select=id,category,category_order,category_position,global_position,english_word,spanish_word,catalan_word,english_phrase,spanish_phrase,catalan_phrase,published_to,published_post_at,published_story_at" +
+    "&or=(published_post_at.is.null,published_story_at.is.null)" +
     "&order=global_position.asc" +
     "&limit=1";
 
@@ -92,6 +94,25 @@ function buildCaption(record) {
     `🔴🟡 ${record.catalan_word}. ${record.catalan_phrase}`,
     "#languages #english #spanish #catalan #barcelona #digital_nomads #keeplearning #madrid"
   ].join("\n");
+}
+
+function getPublishMode(record) {
+  const missingPost = !record.published_post_at;
+  const missingStory = !record.published_story_at;
+
+  if (missingPost && missingStory) {
+    return "story_post";
+  }
+
+  if (missingPost) {
+    return "post";
+  }
+
+  if (missingStory) {
+    return "story";
+  }
+
+  return null;
 }
 
 function layoutFor(mode) {
@@ -191,11 +212,25 @@ async function renderImage(backgroundDataUrl, record, mode) {
 
 async function publishAssets(record, storyBuffer, postBuffer) {
   const { supabaseUrl } = getConfig();
+  const publishMode = getPublishMode(record);
+
+  if (!publishMode) {
+    return {
+      skipped: true,
+      reason: "already_fully_published"
+    };
+  }
+
   const data = await fetchJson(`${supabaseUrl}/functions/v1/media-pipeline`, {
     method: "POST",
     headers: getHeaders(),
     body: JSON.stringify({
-      action: "publish_story_post",
+      action:
+        publishMode === "story"
+          ? "publish_story"
+          : publishMode === "post"
+            ? "publish_post"
+            : "publish_story_post",
       imageDataUrl: `data:image/jpeg;base64,${storyBuffer.toString("base64")}`,
       storyImageDataUrl: `data:image/jpeg;base64,${storyBuffer.toString("base64")}`,
       postImageDataUrl: `data:image/jpeg;base64,${postBuffer.toString("base64")}`,
@@ -209,7 +244,10 @@ async function publishAssets(record, storyBuffer, postBuffer) {
     })
   });
 
-  return data;
+  return {
+    publishMode,
+    ...data
+  };
 }
 
 async function main() {
@@ -228,12 +266,14 @@ async function main() {
   ]);
 
   if (dryRun) {
+    const publishMode = getPublishMode(record);
     console.log(
       JSON.stringify({
         ok: true,
         dryRun: true,
         globalPosition: record.global_position,
         englishWord: record.english_word,
+        publishMode,
         storyBytes: storyBuffer.length,
         postBytes: postBuffer.length
       })

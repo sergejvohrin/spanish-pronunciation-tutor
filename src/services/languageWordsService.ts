@@ -2,13 +2,13 @@ import { supabase } from "@/lib/supabase";
 import { LanguageWordRecord } from "@/types/languageWord";
 
 const LANGUAGE_WORD_COLUMNS =
-  "id,category,category_order,category_position,global_position,english_word,spanish_word,catalan_word,english_phrase,spanish_phrase,catalan_phrase,published_to";
+  "id,category,category_order,category_position,global_position,english_word,spanish_word,catalan_word,english_phrase,spanish_phrase,catalan_phrase,published_to,published_post_at,published_story_at";
 
 export async function getNextUnpublishedWord(): Promise<LanguageWordRecord> {
   const { data, error } = await supabase
     .from("language_words")
     .select(LANGUAGE_WORD_COLUMNS)
-    .or("published_to.is.null,published_to.eq.")
+    .or("published_post_at.is.null,published_story_at.is.null")
     .order("global_position", { ascending: true })
     .limit(1)
     .maybeSingle();
