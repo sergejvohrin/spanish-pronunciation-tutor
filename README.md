@@ -68,9 +68,11 @@ Use `.env.example` as your single config template. Copy to `.env.local` and fill
 cp .env.example .env.local
 ```
 
-Then push backend secrets to Supabase:
+Then link the repo to your new Supabase project and push backend secrets to Supabase:
 
 ```bash
+supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
 supabase secrets set \
   HF_API_TOKEN="$HF_API_TOKEN" \
   HF_MODEL="$HF_MODEL" \
@@ -81,7 +83,7 @@ supabase secrets set \
   META_APP_ID="$META_APP_ID" \
   META_APP_SECRET="$META_APP_SECRET" \
   TOKEN_ROTATION_SECRET="$TOKEN_ROTATION_SECRET" \
-  --project-ref rfaaaszgeuljjczzdrcz
+  --project-ref "$SUPABASE_PROJECT_REF"
 ```
 
 `INSTAGRAM_BUSINESS_ACCOUNT_ID` is optional. If it is set, the backend skips Facebook Page discovery and publishes directly to that IG business account.
@@ -100,10 +102,11 @@ Deploy the edge functions and set secrets in Supabase:
 
 ```bash
 supabase login
-supabase link --project-ref rfaaaszgeuljjczzdrcz
+supabase link --project-ref "$SUPABASE_PROJECT_REF"
 supabase secrets set HF_API_TOKEN=your_huggingface_token HF_MODEL=google/flan-t5-base HF_IMAGE_MODEL=black-forest-labs/FLUX.1-schnell IMGBB_API_KEY=your_imgbb_api_key INSTAGRAM_ACCESS_TOKEN=your_long_lived_instagram_token
 supabase functions deploy hf-translation --no-verify-jwt
 supabase functions deploy hf-image --no-verify-jwt
+supabase functions deploy hf-tts --no-verify-jwt
 supabase functions deploy media-pipeline --no-verify-jwt
 supabase functions deploy refresh-instagram-token --no-verify-jwt
 ```
@@ -186,7 +189,7 @@ curl -G "https://graph.facebook.com/v18.0/oauth/access_token" \
 7. Save the long-lived token into Supabase:
 
 ```bash
-supabase secrets set INSTAGRAM_ACCESS_TOKEN="$INSTAGRAM_ACCESS_TOKEN" --project-ref rfaaaszgeuljjczzdrcz
+supabase secrets set INSTAGRAM_ACCESS_TOKEN="$INSTAGRAM_ACCESS_TOKEN" --project-ref "$SUPABASE_PROJECT_REF"
 ```
 
 8. In the app, use `Check Instagram Setup`.
