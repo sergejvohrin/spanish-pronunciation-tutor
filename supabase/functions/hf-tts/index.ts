@@ -31,12 +31,44 @@ async function synthesizeSpeech(
 ): Promise<{ audioDataUrl: string; contentType: string }> {
   const modelCandidates = [
     Deno.env.get("HF_TTS_MODEL"),
+    "hexgrad/Kokoro-82M",
     "facebook/mms-tts-spa",
     "facebook/mms-tts-spa-female"
   ].filter((value): value is string => Boolean(value && value.trim()));
 
   const safeText = text.trim().slice(0, 120);
   const errorMessages: string[] = [];
+
+  async function tryOpenAICompatAudioSpeech(model: string): Promise<{ audioDataUrl: string; contentType: string } | null> {
+    const hfResponse = await fetch("https://router.huggingface.co/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        input: safeText,
+        voice: "alloy",
+        response_format: "wav"
+      })
+    });
+
+    if (!hfResponse.ok) {
+      const errorBody = await hfResponse.text();
+      errorMessages.push(`openai-compat:${model}: ${hfResponse.status} ${errorBody}`);
+      return null;
+    }
+
+    const contentType = hfResponse.headers.get("content-type") ?? "audio/wav";
+    const bytes = new Uint8Array(await hfResponse.arrayBuffer());
+    const base64 = toBase64(bytes);
+
+    return {
+      audioDataUrl: `data:${contentType};base64,${base64}`,
+      contentType
+    };
+  }
 
   async function tryRouterEndpoint(model: string): Promise<{ audioDataUrl: string; contentType: string } | null> {
     const hfResponse = await fetch(
@@ -103,6 +135,11 @@ async function synthesizeSpeech(
   }
 
   for (const model of modelCandidates) {
+    const openAICompatResult = await tryOpenAICompatAudioSpeech(model);
+    if (openAICompatResult) {
+      return openAICompatResult;
+    }
+
     const routerResult = await tryRouterEndpoint(model);
     if (routerResult) {
       return routerResult;
