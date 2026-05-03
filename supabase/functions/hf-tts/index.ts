@@ -38,7 +38,7 @@ async function synthesizeSpeech(
   const safeText = text.trim().slice(0, 120);
   const errorMessages: string[] = [];
 
-  for (const model of modelCandidates) {
+  async function tryRouterEndpoint(model: string): Promise<{ audioDataUrl: string; contentType: string } | null> {
     const hfResponse = await fetch(
       `https://router.huggingface.co/hf-inference/models/${encodeURIComponent(model)}`,
       {
@@ -54,18 +54,64 @@ async function synthesizeSpeech(
       }
     );
 
-    if (hfResponse.ok) {
-      const contentType = hfResponse.headers.get("content-type") ?? "audio/wav";
-      const bytes = new Uint8Array(await hfResponse.arrayBuffer());
-      const base64 = toBase64(bytes);
-      return {
-        audioDataUrl: `data:${contentType};base64,${base64}`,
-        contentType
-      };
+    if (!hfResponse.ok) {
+      const errorBody = await hfResponse.text();
+      errorMessages.push(`router:${model}: ${hfResponse.status} ${errorBody}`);
+      return null;
     }
 
-    const errorBody = await hfResponse.text();
-    errorMessages.push(`${model}: ${hfResponse.status} ${errorBody}`);
+    const contentType = hfResponse.headers.get("content-type") ?? "audio/wav";
+    const bytes = new Uint8Array(await hfResponse.arrayBuffer());
+    const base64 = toBase64(bytes);
+
+    return {
+      audioDataUrl: `data:${contentType};base64,${base64}`,
+      contentType
+    };
+  }
+
+  async function tryClassicInferenceEndpoint(model: string): Promise<{ audioDataUrl: string; contentType: string } | null> {
+    const hfResponse = await fetch(
+      `https://api-inference.huggingface.co/models/${encodeURIComponent(model)}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "audio/wav"
+        },
+        body: JSON.stringify({
+          inputs: safeText
+        })
+      }
+    );
+
+    if (!hfResponse.ok) {
+      const errorBody = await hfResponse.text();
+      errorMessages.push(`api-inference:${model}: ${hfResponse.status} ${errorBody}`);
+      return null;
+    }
+
+    const contentType = hfResponse.headers.get("content-type") ?? "audio/wav";
+    const bytes = new Uint8Array(await hfResponse.arrayBuffer());
+    const base64 = toBase64(bytes);
+
+    return {
+      audioDataUrl: `data:${contentType};base64,${base64}`,
+      contentType
+    };
+  }
+
+  for (const model of modelCandidates) {
+    const routerResult = await tryRouterEndpoint(model);
+    if (routerResult) {
+      return routerResult;
+    }
+
+    const classicResult = await tryClassicInferenceEndpoint(model);
+    if (classicResult) {
+      return classicResult;
+    }
   }
 
   throw new Error(`Hugging Face TTS request failed for all candidate models. ${errorMessages.join(" | ")}`);
@@ -100,4 +146,3 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: message }, 500);
   }
 });
-
