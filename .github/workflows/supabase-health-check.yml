@@ -103,23 +103,42 @@ jobs:
             local payload="$3"
             local tmp_file
             local http_code
-            tmp_file="$(mktemp)"
-            http_code="$(curl -sS --retry 3 --retry-delay 2 --retry-all-errors \
-              -o "$tmp_file" -w '%{http_code}' -X POST "$url" \
-              -H "Content-Type: application/json" \
-              -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
-              -H "Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
-              -d "$payload")"
+            local attempt
+            local body
+            local retryable
 
-            if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
-              echo "$label failed with HTTP $http_code" >&2
-              cat "$tmp_file" >&2
+            for attempt in 1 2 3 4 5 6; do
+              tmp_file="$(mktemp)"
+              http_code="$(curl -sS --connect-timeout 30 --max-time 180 \
+                -o "$tmp_file" -w '%{http_code}' -X POST "$url" \
+                -H "Content-Type: application/json" \
+                -H "apikey: ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
+                -H "Authorization: Bearer ${VITE_SUPABASE_PUBLISHABLE_KEY}" \
+                -d "$payload")"
+              body="$(cat "$tmp_file")"
               rm -f "$tmp_file"
-              exit 1
-            fi
 
-            cat "$tmp_file"
-            rm -f "$tmp_file"
+              if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+                printf '%s' "$body"
+                return 0
+              fi
+
+              retryable=false
+              if [ "$http_code" = "404" ] || [ "$http_code" = "408" ] || [ "$http_code" = "429" ] || [ "$http_code" -ge 500 ]; then
+                retryable=true
+              fi
+
+              if [ "$retryable" = true ] && [ "$attempt" -lt 6 ]; then
+                echo "$label attempt $attempt failed with HTTP $http_code, retrying..." >&2
+                echo "$body" >&2
+                sleep $((attempt * 5))
+                continue
+              fi
+
+              echo "$label failed with HTTP $http_code" >&2
+              echo "$body" >&2
+              exit 1
+            done
           }
 
           echo "started_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
