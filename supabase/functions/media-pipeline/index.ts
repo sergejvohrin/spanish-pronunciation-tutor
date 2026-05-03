@@ -12,12 +12,13 @@ interface SaveRequest {
 }
 
 interface PublishRequest {
-  action: "publish_story_post";
+  action: "publish_story" | "publish_post" | "publish_story_post";
   imageDataUrl: string;
   caption: string;
   imgbbApiKey?: string;
   instagramAccessToken?: string;
   translation?: TranslationPayload;
+  globalPosition?: number;
 }
 
 interface ReadinessRequest {
@@ -109,6 +110,55 @@ async function logPostEvent(params: {
   if (!response.ok) {
     const body = await response.text();
     console.error(`post_logs insert failed: ${response.status} ${body}`);
+  }
+}
+
+async function updateLanguageWordPublication(globalPosition: number | undefined, publicationLabel: string): Promise<void> {
+  if (!globalPosition) {
+    return;
+  }
+
+  const config = getSupabaseRestConfig();
+  if (!config) {
+    return;
+  }
+
+  const existingResponse = await fetch(
+    `${config.url}/rest/v1/language_words?select=published_to&global_position=eq.${globalPosition}&limit=1`,
+    {
+      headers: {
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`
+      }
+    }
+  );
+
+  if (!existingResponse.ok) {
+    const body = await existingResponse.text();
+    console.error(`language_words fetch failed: ${existingResponse.status} ${body}`);
+    return;
+  }
+
+  const existingPayload = (await existingResponse.json()) as Array<{ published_to?: string }>;
+  const previousValue = (existingPayload[0]?.published_to ?? "").trim();
+  const nextValue = previousValue ? `${previousValue} | ${publicationLabel}` : publicationLabel;
+
+  const updateResponse = await fetch(`${config.url}/rest/v1/language_words?global_position=eq.${globalPosition}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      Prefer: "return=minimal"
+    },
+    body: JSON.stringify({
+      published_to: nextValue
+    })
+  });
+
+  if (!updateResponse.ok) {
+    const body = await updateResponse.text();
+    console.error(`language_words update failed: ${updateResponse.status} ${body}`);
   }
 }
 
@@ -302,18 +352,27 @@ Deno.serve(async (request) => {
     try {
       const target = await inspectInstagramPublishingTarget(instagramToken);
       const igUserId = target.igUserId;
+      let postId: string | undefined;
+      let storyId: string | undefined;
+      const publicationTimestamp = new Date().toISOString();
 
-      const postCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, caption, "IMAGE");
-      const storyCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, "", "STORIES");
+      if (body.action === "publish_post" || body.action === "publish_story_post") {
+        const postCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, caption, "IMAGE");
+        postId = await publishInstagramContainerForUser(igUserId, instagramToken, postCreationId);
+        await updateLanguageWordPublication(body.globalPosition, `post:${publicationTimestamp}`);
+      }
 
-      const postId = await publishInstagramContainerForUser(igUserId, instagramToken, postCreationId);
-      const storyId = await publishInstagramContainerForUser(igUserId, instagramToken, storyCreationId);
+      if (body.action === "publish_story" || body.action === "publish_story_post") {
+        const storyCreationId = await createInstagramContainer(igUserId, instagramToken, imageUrl, "", "STORIES");
+        storyId = await publishInstagramContainerForUser(igUserId, instagramToken, storyCreationId);
+        await updateLanguageWordPublication(body.globalPosition, `story:${publicationTimestamp}`);
+      }
 
       await logPostEvent({
         translation: body.translation,
         caption,
         imageUrl,
-        instagramMediaId: `post:${postId};story:${storyId}`,
+        instagramMediaId: [postId ? `post:${postId}` : "", storyId ? `story:${storyId}` : ""].filter(Boolean).join(";"),
         status: "publish_succeeded"
       });
 

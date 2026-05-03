@@ -60,15 +60,15 @@ export async function generateTranslationPostImage(
   ctx.drawImage(image, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   // Global dim layer for readability.
-  ctx.fillStyle = "rgba(0, 0, 0, 0.42)";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.46)";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-  const contentWidth = 860;
+  const contentWidth = 890;
   const contentX = (CANVAS_WIDTH - contentWidth) / 2;
-  const sectionHeight = 190;
-  const gap = 28;
+  const sectionHeight = 196;
+  const gap = 26;
   const totalHeight = sectionHeight * 3 + gap * 2;
-  const startY = (CANVAS_HEIGHT - totalHeight) / 2 - 15;
+  const startY = (CANVAS_HEIGHT - totalHeight) / 2 - 12;
 
   const sections = [
     {
@@ -97,16 +97,16 @@ export async function generateTranslationPostImage(
     const centerY = y + sectionHeight / 2;
 
     // Grey translucent box behind each language block.
-    ctx.fillStyle = "rgba(150, 150, 150, 0.24)";
+    ctx.fillStyle = "rgba(150, 150, 150, 0.26)";
     ctx.fillRect(contentX, y, contentWidth, sectionHeight);
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "700 48px Inter, sans-serif";
-    ctx.fillText(section.title, centerX, centerY - 54);
+    ctx.font = "700 46px Inter, sans-serif";
+    ctx.fillText(section.title, centerX, centerY - 56);
 
-    drawFittedText(ctx, section.word, centerX, centerY + 4, contentWidth - 120, 78, 54, 800);
+    drawFittedText(ctx, section.word, centerX, centerY + 2, contentWidth - 120, 82, 56, 800);
 
-    drawFittedText(ctx, section.phrase, centerX, centerY + 64, contentWidth - 120, 50, 32, 500);
+    drawFittedText(ctx, section.phrase, centerX, centerY + 68, contentWidth - 120, 48, 32, 500);
   });
 
   return toJpegDataUrl(canvas);

@@ -7,8 +7,8 @@ interface SaveResponse {
 
 interface PublishResponse {
   imageUrl: string;
-  postId: string;
-  storyId: string;
+  postId?: string;
+  storyId?: string;
 }
 
 interface ReadinessResponse {
@@ -67,17 +67,27 @@ export async function saveGeneratedImageToImgBB(
 export async function publishGeneratedImageToInstagram(
   imageDataUrl: string,
   caption: string,
-  translation: Translation
+  translation: Translation,
+  publishMode: "story" | "post" | "story_post",
+  globalPosition: number
 ): Promise<PublishResponse> {
   const { supabaseUrl, publishableKey } = getSupabaseConfig();
+
+  const action =
+    publishMode === "story"
+      ? "publish_story"
+      : publishMode === "post"
+        ? "publish_post"
+        : "publish_story_post";
 
   const response = await axios.post<PublishResponse | { error: string }>(
     `${supabaseUrl}/functions/v1/media-pipeline`,
     {
-      action: "publish_story_post",
+      action,
       imageDataUrl,
       caption,
-      translation
+      translation,
+      globalPosition
     },
     {
       headers: getHeaders(publishableKey)
